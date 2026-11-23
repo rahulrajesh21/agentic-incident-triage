@@ -1,0 +1,57 @@
+{
+  "shas": {
+    "baseline": {
+      "checkout-api": "6011574",
+      "auth-service": "a81fc30",
+      "payment-worker": "2422a27",
+      "inventory-api": "8508edd"
+    },
+    "culprit": {
+      "db_pool_exhaustion": "1f46d5d",
+      "auth_timeout": "c7d3d86",
+      "env_var_rename": "505d944"
+    },
+    "decoy": {
+      "checkout_readme": "ee9e6be",
+      "auth_changelog": "576a7c5"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "db_pool_exhaustion",
+      "service": "checkout-api",
+      "started_at": "2026-11-20T01:54:00Z",
+      "expected_culprit_sha": "1f46d5d",
+      "expected_rollback_sha": "6011574",
+      "expected_runbook": "postgres-pool-runbook.md#rollback",
+      "expected_action": "rollback"
+    },
+    {
+      "id": "auth_timeout",
+      "service": "auth-service",
+      "started_at": "2026-11-20T03:14:00Z",
+      "expected_culprit_sha": "c7d3d86",
+      "expected_rollback_sha": "a81fc30",
+      "expected_runbook": "auth-jwt-timeout-runbook.md#remediation",
+      "expected_action": "rollback"
+    },
+    {
+      "id": "env_var_rename",
+      "service": "payment-worker",
+      "started_at": "2026-11-20T05:03:00Z",
+      "expected_culprit_sha": "505d944",
+      "expected_rollback_sha": "2422a27",
+      "expected_runbook": "payment-worker-env-runbook.md#remediation",
+      "expected_action": "rollback"
+    },
+    {
+      "id": "novel_dns_outage",
+      "service": "inventory-api",
+      "started_at": "2026-11-20T07:20:00Z",
+      "expected_culprit_sha": null,
+      "expected_rollback_sha": null,
+      "expected_runbook": null,
+      "expected_action": "escalate_only"
+    }
+  ]
+}
