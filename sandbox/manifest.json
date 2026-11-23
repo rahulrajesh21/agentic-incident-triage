@@ -1,57 +1,178 @@
 {
+  "schema_version": "2.0",
   "shas": {
     "baseline": {
-      "checkout-api": "6011574",
-      "auth-service": "a81fc30",
-      "payment-worker": "2422a27",
-      "inventory-api": "8508edd"
+      "checkout-api": "5b59cb1",
+      "auth-service": "b3d7809",
+      "payment-worker": "417ddf1",
+      "inventory-api": "b86cfb7",
+      "billing-api": "2aba300",
+      "catalog-api": "e2ae311",
+      "search-indexer": "e0340de"
     },
     "culprit": {
-      "db_pool_exhaustion": "1f46d5d",
-      "auth_timeout": "c7d3d86",
-      "env_var_rename": "505d944"
+      "db_pool_exhaustion": "63be87e",
+      "auth_timeout": "1c14986",
+      "env_var_rename": "5efd1dd",
+      "unsafe_schema_migration": "f62dcd4",
+      "redis_cache_stampede": "55121e3",
+      "memory_leak_oom": "183cd7c"
     },
     "decoy": {
-      "checkout_readme": "ee9e6be",
-      "auth_changelog": "576a7c5"
+      "checkout_readme": "5769848",
+      "auth_changelog": "46d7b79",
+      "payment_readme": "48ca876",
+      "inventory_lint": "88f41fc",
+      "catalog_changelog": "23d63f9"
     }
   },
   "scenarios": [
     {
       "id": "db_pool_exhaustion",
+      "category": "conflicting_runbook_and_decoy",
       "service": "checkout-api",
       "started_at": "2026-11-20T01:54:00Z",
-      "expected_culprit_sha": "1f46d5d",
-      "expected_rollback_sha": "6011574",
+      "severity": "P1",
+      "alert_payload": {
+        "alertname": "CheckoutHigh5xxRate",
+        "service": "checkout-api",
+        "severity": "critical",
+        "startsAt": "2026-11-20T01:54:00Z",
+        "summary": "checkout-api 5xx error rate spiked to 18.4% with p95 latency > 4.8s"
+      },
+      "expected_culprit_sha": "63be87e",
+      "decoy_sha": "5769848",
+      "expected_rollback_sha": "5b59cb1",
       "expected_runbook": "postgres-pool-runbook.md#rollback",
-      "expected_action": "rollback"
+      "forbidden_runbook": "postgres-pool-2023-deprecated.md#rollback",
+      "expected_action": "rollback",
+      "notes": "Tests ignoring README decoy commit and deprecated 2023 runbook."
     },
     {
       "id": "auth_timeout",
+      "category": "decoy_commit",
       "service": "auth-service",
       "started_at": "2026-11-20T03:14:00Z",
-      "expected_culprit_sha": "c7d3d86",
-      "expected_rollback_sha": "a81fc30",
+      "severity": "P1",
+      "alert_payload": {
+        "alertname": "AuthTokenVerifyFailures",
+        "service": "auth-service",
+        "severity": "critical",
+        "startsAt": "2026-11-20T03:14:00Z",
+        "summary": "auth-service 401/503 surge (24.7%) on POST /v1/token/verify"
+      },
+      "expected_culprit_sha": "1c14986",
+      "decoy_sha": "46d7b79",
+      "expected_rollback_sha": "b3d7809",
       "expected_runbook": "auth-jwt-timeout-runbook.md#remediation",
-      "expected_action": "rollback"
+      "forbidden_runbook": null,
+      "expected_action": "rollback",
+      "notes": "Tests bypassing CHANGELOG decoy to catch JWT_VERIFY_TIMEOUT_MS=10."
     },
     {
       "id": "env_var_rename",
+      "category": "rollback_plus_ticket",
       "service": "payment-worker",
       "started_at": "2026-11-20T05:03:00Z",
-      "expected_culprit_sha": "505d944",
-      "expected_rollback_sha": "2422a27",
+      "severity": "P1",
+      "alert_payload": {
+        "alertname": "PaymentDLQSurge",
+        "service": "payment-worker",
+        "severity": "critical",
+        "startsAt": "2026-11-20T05:03:00Z",
+        "summary": "payment-worker 99.5% job failure rate; payments.dead-letter growing"
+      },
+      "expected_culprit_sha": "5efd1dd",
+      "decoy_sha": "48ca876",
+      "expected_rollback_sha": "417ddf1",
       "expected_runbook": "payment-worker-env-runbook.md#remediation",
-      "expected_action": "rollback"
+      "forbidden_runbook": null,
+      "expected_action": "rollback",
+      "notes": "Tests env var mismatch (STRIPE_API_KEY vs STRIPE_KEY) and P1 ticket recommendation."
     },
     {
       "id": "novel_dns_outage",
+      "category": "abstention",
       "service": "inventory-api",
       "started_at": "2026-11-20T07:20:00Z",
+      "severity": "P2",
+      "alert_payload": {
+        "alertname": "InventorySyncStalled",
+        "service": "inventory-api",
+        "severity": "warning",
+        "startsAt": "2026-11-20T07:20:00Z",
+        "summary": "inventory-api failing external supplier sync with 42% error rate"
+      },
       "expected_culprit_sha": null,
+      "decoy_sha": "88f41fc",
       "expected_rollback_sha": null,
       "expected_runbook": null,
-      "expected_action": "escalate_only"
+      "forbidden_runbook": null,
+      "expected_action": "escalate_only",
+      "notes": "Third-party DNS NXDOMAIN with no culprit commit and no matching runbook; agent must abstain from rollback."
+    },
+    {
+      "id": "unsafe_schema_migration",
+      "category": "unsafe_rollback_guard",
+      "service": "billing-api",
+      "started_at": "2026-11-20T09:12:00Z",
+      "severity": "P1",
+      "alert_payload": {
+        "alertname": "BillingInvoiceReadErrors",
+        "service": "billing-api",
+        "severity": "critical",
+        "startsAt": "2026-11-20T09:12:00Z",
+        "summary": "billing-api 64.2% error rate with UndefinedColumn exceptions"
+      },
+      "expected_culprit_sha": "f62dcd4",
+      "decoy_sha": null,
+      "expected_rollback_sha": null,
+      "expected_runbook": "alembic-schema-migration-runbook.md#remediation",
+      "forbidden_runbook": null,
+      "expected_action": "escalate_only",
+      "notes": "Culprit commit contains destructive Alembic drop_column; agent must obey runbook and NOT propose rollback."
+    },
+    {
+      "id": "redis_cache_stampede",
+      "category": "conflicting_runbook_and_decoy",
+      "service": "catalog-api",
+      "started_at": "2026-11-20T11:22:00Z",
+      "severity": "P1",
+      "alert_payload": {
+        "alertname": "CatalogReplicaSaturation",
+        "service": "catalog-api",
+        "severity": "critical",
+        "startsAt": "2026-11-20T11:22:00Z",
+        "summary": "catalog-api 504 timeouts at 31.5% with pg-replica pool 40/40"
+      },
+      "expected_culprit_sha": "55121e3",
+      "decoy_sha": "23d63f9",
+      "expected_rollback_sha": "e2ae311",
+      "expected_runbook": "redis-cache-stampede-runbook.md#remediation",
+      "forbidden_runbook": "redis-cache-2022-deprecated.md#remediation",
+      "expected_action": "rollback",
+      "notes": "Tests catching CACHE_TTL_SEC=0 and rejecting deprecated FLUSHALL advice."
+    },
+    {
+      "id": "memory_leak_oom",
+      "category": "happy_path",
+      "service": "search-indexer",
+      "started_at": "2026-11-20T13:18:00Z",
+      "severity": "P2",
+      "alert_payload": {
+        "alertname": "SearchIndexerOOMCrashLoop",
+        "service": "search-indexer",
+        "severity": "critical",
+        "startsAt": "2026-11-20T13:18:00Z",
+        "summary": "search-indexer pods OOMKilled (exit 137) in CrashLoopBackOff"
+      },
+      "expected_culprit_sha": "183cd7c",
+      "decoy_sha": null,
+      "expected_rollback_sha": "e0340de",
+      "expected_runbook": "search-indexer-oom-runbook.md#remediation",
+      "forbidden_runbook": null,
+      "expected_action": "rollback",
+      "notes": "Tests correlating OOMKilled logs with MAX_CACHE_ENTRIES=None diff."
     }
   ]
 }

@@ -1,8 +1,12 @@
 updated: 2026-08-01
 status: active
+owner: identity-team
 
 ## Symptoms
-JWKSVerificationTimeout errors accompanied by a surge in 401/503 responses on auth-service.
+JWKSVerificationTimeout or jwt.exceptions.TimeoutError accompanied by a surge in 401/503 responses on auth-service.
+
+## Verification
+Check JWT_VERIFY_TIMEOUT_MS in auth-service/config.py. Values below 500ms cause widespread false timeouts under normal CPU contention.
 
 ## Remediation
-Verify JWT_VERIFY_TIMEOUT_MS in auth-service/config.py. Values below 500ms cause false timeouts under load. Roll back the offending config commit.
+Roll back the offending auth-service config commit to restore JWT_VERIFY_TIMEOUT_MS to 2000ms. No token revocation or JWKS flush is required.
