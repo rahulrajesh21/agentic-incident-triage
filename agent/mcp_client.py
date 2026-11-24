@@ -1,5 +1,33 @@
 import os
+import sys
+import types
 from typing import Any
+
+# Compatibility bridge for langchain-mcp-adapters on mcp 2.x
+try:
+    import mcp.shared.context as _mcp_ctx
+    if not hasattr(_mcp_ctx, "RequestContext"):
+        _mcp_ctx.RequestContext = object
+    if "mcp.shared.session" not in sys.modules:
+        _sess_mod = types.ModuleType("mcp.shared.session")
+        _sess_mod.ProgressFnT = object
+        sys.modules["mcp.shared.session"] = _sess_mod
+
+    import fastmcp.tools
+
+    mcp_fastmcp = types.ModuleType("mcp.server.fastmcp")
+    mcp_fastmcp_tools = types.ModuleType("mcp.server.fastmcp.tools")
+    mcp_fastmcp_tools.Tool = fastmcp.tools.Tool
+    mcp_fastmcp_utils = types.ModuleType("mcp.server.fastmcp.utilities.func_metadata")
+    mcp_fastmcp_utils.ArgModelBase = type("ArgModelBase", (), {})
+    mcp_fastmcp_utils.FuncMetadata = type("FuncMetadata", (), {})
+
+    sys.modules["mcp.server.fastmcp"] = mcp_fastmcp
+    sys.modules["mcp.server.fastmcp.tools"] = mcp_fastmcp_tools
+    sys.modules["mcp.server.fastmcp.utilities"] = types.ModuleType("mcp.server.fastmcp.utilities")
+    sys.modules["mcp.server.fastmcp.utilities.func_metadata"] = mcp_fastmcp_utils
+except Exception:
+    pass
 
 from langchain.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -32,6 +60,9 @@ async def load_tools() -> list[BaseTool]:
             f"Security boundary violated: write tools exposed on read-only gateway: {leaked_tools}"
         )
     return tools
+
+
+load_readonly_tools = load_tools
 
 
 async def call_remediation_tool(

@@ -26,3 +26,10 @@ sandbox/*.db
 Thumbs.db
 .idea/
 .vscode/
+
+# Node / Frontend
+node_modules/
+dist/
+ui/dist/
+ui/node_modules/
+
