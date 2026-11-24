@@ -80,4 +80,4 @@ def detect_anomaly(service: str, error_rate_jump_pct: float = 5.0) -> dict:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
+    mcp.run(transport="streamable-http",host='0.0.0.0',port=8001)
