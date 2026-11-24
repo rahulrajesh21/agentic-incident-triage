@@ -4,22 +4,22 @@
 
 @layer base {
   body {
-    @apply bg-[#09090b] text-zinc-100 font-sans;
+    @apply bg-[#09090b] text-zinc-100 font-sans antialiased;
   }
 }
 
-/* Custom scrollbars */
+/* Matte hairline scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(24, 24, 27, 0.4);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(63, 63, 70, 0.6);
-  border-radius: 9999px;
+  background: #27272a;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(82, 82, 91, 0.8);
+  background: #3f3f46;
 }

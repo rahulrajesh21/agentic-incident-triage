@@ -1,13 +1,5 @@
 import React, { useState } from "react";
-import {
-  ArrowRight,
-  CheckCircle2,
-  Clock,
-  Loader2,
-  Search,
-  Shield,
-  XCircle,
-} from "lucide-react";
+import { Search, X } from "lucide-react";
 import { IncidentDetail, IncidentStatus } from "../types/tracegate";
 
 interface IncidentSidebarProps {
@@ -16,6 +8,7 @@ interface IncidentSidebarProps {
   selectedId: string | null;
   onSelectIncident: (id: string) => void;
   onLookupIncident: (id: string) => void;
+  onClearIncidents: () => void;
 }
 
 export const IncidentSidebar: React.FC<IncidentSidebarProps> = ({
@@ -24,205 +17,242 @@ export const IncidentSidebar: React.FC<IncidentSidebarProps> = ({
   selectedId,
   onSelectIncident,
   onLookupIncident,
+  onClearIncidents,
 }) => {
   const [filter, setFilter] = useState<"all" | "approval" | "investigating" | "closed">("all");
-  const [manualId, setManualId] = useState<string>("");
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [query, setQuery] = useState<string>("");
 
-  const handleManualSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (manualId.trim()) {
-      onLookupIncident(manualId.trim());
-      setManualId("");
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      const trimmed = query.trim();
+      if (!trimmed) return;
+      if (/^inc-/i.test(trimmed)) {
+        e.preventDefault();
+        onLookupIncident(trimmed);
+        setQuery("");
+      } else if (filteredIds.length === 1) {
+        e.preventDefault();
+        onSelectIncident(filteredIds[0]);
+      }
     }
   };
 
-  const filteredIds = incidentIds.filter((id) => {
+  const matchesSearch = (id: string) => {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
     const inc = incidents[id];
-    // Text search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchId = id.toLowerCase().includes(q);
-      const matchService = inc?.alert?.service?.toLowerCase().includes(q) || inc?.triage_report?.service?.toLowerCase().includes(q);
-      const matchAlert = inc?.alert?.alertname?.toLowerCase().includes(q);
-      if (!matchId && !matchService && !matchAlert) return false;
-    }
+    return (
+      id.toLowerCase().includes(q) ||
+      Boolean(inc?.alert?.service?.toLowerCase().includes(q)) ||
+      Boolean(inc?.triage_report?.service?.toLowerCase().includes(q)) ||
+      Boolean(inc?.alert?.alertname?.toLowerCase().includes(q))
+    );
+  };
 
-    if (filter === "all") return true;
-    if (filter === "approval") return inc?.status === "awaiting_approval" || inc?.awaiting_human_approval;
-    if (filter === "investigating") return inc?.status === "investigating" || inc?.status === "synthesizing";
-    if (filter === "closed") return inc?.status === "executed" || inc?.status === "rejected";
+  const matchesTab = (id: string, tab: typeof filter) => {
+    const inc = incidents[id];
+    if (tab === "all") return true;
+    if (tab === "approval") {
+      return inc?.status === "awaiting_approval" || Boolean(inc?.awaiting_human_approval);
+    }
+    if (tab === "investigating") {
+      return inc?.status === "investigating" || inc?.status === "synthesizing";
+    }
+    if (tab === "closed") {
+      return inc?.status === "executed" || inc?.status === "rejected";
+    }
     return true;
-  });
+  };
 
-  const getStatusIcon = (status?: IncidentStatus, awaitingApproval?: boolean) => {
+  const tabCounts = {
+    all: incidentIds.length,
+    approval: incidentIds.filter((id) => matchesTab(id, "approval")).length,
+    investigating: incidentIds.filter((id) => matchesTab(id, "investigating")).length,
+    closed: incidentIds.filter((id) => matchesTab(id, "closed")).length,
+  };
+
+  const filteredIds = incidentIds.filter((id) => matchesSearch(id) && matchesTab(id, filter));
+
+  const getStatusDotClass = (status?: IncidentStatus, awaitingApproval?: boolean) => {
     if (awaitingApproval || status === "awaiting_approval") {
-      return (
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]"></span>
-        </span>
-      );
-    }
-    if (status === "investigating" || status === "synthesizing") {
-      return <Loader2 className="h-3 w-3 text-cyan-400 animate-spin" />;
+      return "bg-amber-500";
     }
     if (status === "executed") {
-      return <CheckCircle2 className="h-3 w-3 text-emerald-400" />;
+      return "bg-emerald-500";
     }
     if (status === "rejected") {
-      return <XCircle className="h-3 w-3 text-rose-400" />;
+      return "bg-red-500";
     }
-    return <Clock className="h-3 w-3 text-zinc-500" />;
+    if (status === "investigating" || status === "synthesizing") {
+      return "bg-zinc-300 animate-pulse";
+    }
+    return "bg-zinc-600";
   };
 
-  const getSeverityBadge = (severity?: string) => {
+  const getSeverityTag = (severity?: string) => {
     const s = severity?.toLowerCase();
     if (s === "critical" || s === "p1") {
       return (
-        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-800/60 font-semibold">
+        <span className="font-mono text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 shrink-0">
           P1
         </span>
       );
     }
     if (s === "warning" || s === "p2") {
       return (
-        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/60 font-semibold">
+        <span className="font-mono text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
           P2
         </span>
       );
     }
     return (
-      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+      <span className="font-mono text-[10px] tabular-nums px-1.5 py-0.5 rounded bg-zinc-800/80 text-zinc-400 border border-zinc-700/60 shrink-0">
         P3
       </span>
     );
   };
 
+  const formatShortId = (id: string) => {
+    if (id.length <= 12) return id;
+    return `${id.slice(0, 12)}`;
+  };
+
   return (
-    <aside className="w-full lg:w-80 border-r border-white/10 bg-[#09090b]/80 backdrop-blur-md flex flex-col h-[calc(100vh-4rem)]">
-      {/* Search & Manual Lookup */}
-      <div className="p-3.5 border-b border-zinc-800 space-y-2.5 bg-zinc-950/40">
+    <aside className="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-zinc-800/90 bg-[#0e0e11] flex flex-col lg:h-[calc(100vh-3rem)]">
+      {/* Unified Search / Lookup Input */}
+      <div className="p-2.5 border-b border-zinc-800/90">
         <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-zinc-500" />
+          <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search service, alert, SHA..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-md pl-8 pr-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-cyan-500/60"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Filter or paste inc-... (↵)"
+            className="w-full h-8 bg-zinc-950 border border-zinc-800/90 rounded-md pl-8 pr-7 text-xs font-mono text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 transition-colors"
           />
-        </div>
-
-        <form onSubmit={handleManualSubmit} className="flex gap-1.5">
-          <input
-            type="text"
-            placeholder="Manual incident_id lookup..."
-            value={manualId}
-            onChange={(e) => setManualId(e.target.value)}
-            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-md px-2.5 py-1.5 text-xs font-mono text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-cyan-500/60"
-          />
-          <button
-            type="submit"
-            className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-md text-xs font-mono text-zinc-200 transition"
-          >
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
-        </form>
-
-        {/* Filters */}
-        <div className="flex gap-1 overflow-x-auto pb-0.5">
-          {(
-            [
-              { key: "all", label: "All" },
-              { key: "approval", label: "Approval" },
-              { key: "investigating", label: "Active" },
-              { key: "closed", label: "Closed" },
-            ] as const
-          ).map((item) => (
+          {query && (
             <button
-              key={item.key}
-              onClick={() => setFilter(item.key)}
-              className={`px-2.5 py-1 rounded text-[11px] font-medium transition ${
-                filter === item.key
-                  ? "bg-zinc-800 text-white border border-zinc-700 shadow-sm"
-                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
-              }`}
+              type="button"
+              onClick={() => setQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+              aria-label="Clear filter"
             >
-              {item.label}
+              <X className="w-3.5 h-3.5" />
             </button>
-          ))}
+          )}
         </div>
       </div>
 
-      {/* Incident List */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+      {/* Flush Underline Filter Tabs */}
+      <div className="flex items-center border-b border-zinc-800/90 px-3 gap-4 overflow-x-auto">
+        {(
+          [
+            { key: "all", label: "All", count: tabCounts.all },
+            { key: "approval", label: "Approval", count: tabCounts.approval },
+            { key: "investigating", label: "Active", count: tabCounts.investigating },
+            { key: "closed", label: "Closed", count: tabCounts.closed },
+          ] as const
+        ).map((item) => {
+          const isActive = filter === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setFilter(item.key)}
+              className={`py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap inline-flex items-center gap-1.5 transition-colors ${
+                isActive
+                  ? "border-zinc-100 text-zinc-100"
+                  : "border-transparent text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              <span>{item.label}</span>
+              <span className="font-mono text-[11px] tabular-nums text-zinc-500">
+                {item.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Incident Queue Rows */}
+      <div className="flex-1 overflow-y-auto">
         {filteredIds.length === 0 ? (
-          <div className="text-center py-10 px-4 text-zinc-500 text-xs">
-            <Shield className="h-8 w-8 mx-auto mb-2 opacity-30 text-zinc-400" />
-            <p>No incidents found.</p>
-            <p className="text-[11px] text-zinc-600 mt-1">
-              Click &quot;Simulate Outage&quot; or dispatch an Alertmanager webhook.
-            </p>
+          <div className="px-4 py-10 text-center text-xs text-zinc-500">
+            {incidentIds.length === 0
+              ? "No incidents tracked."
+              : "No incidents match current filter."}
           </div>
         ) : (
           filteredIds.map((id) => {
             const inc = incidents[id];
             const isSelected = selectedId === id;
-            const isAwaiting = inc?.status === "awaiting_approval" || inc?.awaiting_human_approval;
+            const isAwaiting =
+              inc?.status === "awaiting_approval" || Boolean(inc?.awaiting_human_approval);
+            const serviceName =
+              inc?.alert?.service || inc?.triage_report?.service || "pending-triage";
+            const alertTitle =
+              inc?.alert?.alertname || inc?.alert?.summary || "Fetching incident state...";
 
             return (
-              <div
+              <button
                 key={id}
+                type="button"
                 onClick={() => onSelectIncident(id)}
-                className={`group cursor-pointer rounded-lg p-3 border transition-all text-left ${
+                className={`w-full px-3 py-2.5 border-b border-zinc-800/60 text-left transition-colors block ${
                   isSelected
-                    ? "bg-gradient-to-r from-cyan-950/50 to-zinc-900 border-cyan-500/50 shadow-md shadow-cyan-950/20 ring-1 ring-cyan-500/30"
-                    : isAwaiting
-                    ? "bg-amber-950/20 border-amber-500/30 hover:border-amber-500/60"
-                    : "bg-zinc-900/40 border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-850/60"
+                    ? "bg-zinc-900"
+                    : "hover:bg-zinc-900/50"
                 }`}
               >
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <div className="flex items-center gap-2 truncate">
-                    {getStatusIcon(inc?.status, isAwaiting)}
-                    <span className="font-semibold text-xs text-zinc-200 truncate">
-                      {inc?.alert?.service || inc?.triage_report?.service || "investigating-svc"}
+                {/* Line 1: Status dot + service + severity */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full shrink-0 ${getStatusDotClass(
+                        inc?.status,
+                        isAwaiting
+                      )}`}
+                    />
+                    <span className="font-medium text-zinc-100 text-xs truncate">
+                      {serviceName}
                     </span>
                   </div>
-                  {getSeverityBadge(inc?.triage_report?.severity || inc?.alert?.severity)}
+                  {getSeverityTag(inc?.triage_report?.severity || inc?.alert?.severity)}
                 </div>
 
-                <p className="text-[11px] text-zinc-400 line-clamp-1 mb-2">
-                  {inc?.alert?.alertname || inc?.alert?.summary || "Active Investigation"}
-                </p>
-
-                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500">
-                  <span className="truncate max-w-[140px] text-zinc-400 font-semibold">{id}</span>
+                {/* Line 2: Alertname truncated + short incident_id */}
+                <div className="flex items-center justify-between gap-2 mt-1 pl-3.5">
+                  <span className="text-xs text-zinc-400 truncate">
+                    {alertTitle}
+                  </span>
                   <span
-                    className={`uppercase font-medium ${
-                      isAwaiting
-                        ? "text-amber-400 font-bold"
-                        : inc?.status === "executed"
-                        ? "text-emerald-400"
-                        : inc?.status === "investigating"
-                        ? "text-cyan-400"
-                        : "text-zinc-500"
-                    }`}
+                    className="font-mono text-[11px] text-zinc-500 shrink-0 tabular-nums"
+                    title={id}
                   >
-                    {isAwaiting ? "NEEDS SIGN-OFF" : inc?.status || "PENDING"}
+                    {formatShortId(id)}
                   </span>
                 </div>
-              </div>
+              </button>
             );
           })
         )}
       </div>
 
-      {/* Footer Info */}
-      <div className="p-3 border-t border-zinc-800 text-[11px] font-mono text-zinc-500 bg-zinc-950/60 flex items-center justify-between">
-        <span>Tracked: {incidentIds.length}</span>
-        <span className="text-zinc-600">Storage: localStorage</span>
+      {/* Minimal Sidebar Footer */}
+      <div className="h-9 shrink-0 px-3 border-t border-zinc-800/90 flex items-center justify-between text-[11px] font-mono text-zinc-500 bg-[#0e0e11]">
+        <span className="tabular-nums">
+          {incidentIds.length} tracked {incidentIds.length === 1 ? "incident" : "incidents"}
+        </span>
+        {incidentIds.length > 0 && (
+          <button
+            type="button"
+            onClick={onClearIncidents}
+            className="text-zinc-500 hover:text-zinc-200 transition-colors"
+          >
+            Clear
+          </button>
+        )}
       </div>
     </aside>
   );

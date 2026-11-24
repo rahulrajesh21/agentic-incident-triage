@@ -2,13 +2,11 @@ import React, { useState } from "react";
 import {
   ArrowRight,
   BookOpen,
+  Check,
   CheckSquare,
   Copy,
-  GitBranch,
   GitCommit,
-  ListChecks,
   RotateCcw,
-  Sparkles,
 } from "lucide-react";
 import { TriageReport } from "../types/tracegate";
 
@@ -22,70 +20,65 @@ export const TriageReportPanel: React.FC<TriageReportPanelProps> = ({ report }) 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2000);
+    setTimeout(() => setCopiedKey(null), 1800);
   };
 
   const confidencePct = Math.round(report.confidence * 100);
-  const getConfidenceColor = (conf: number) => {
-    if (conf >= 0.85) return "text-emerald-400 bg-emerald-500";
-    if (conf >= 0.6) return "text-amber-400 bg-amber-500";
-    return "text-rose-400 bg-rose-500";
+  const getConfidenceStyle = (conf: number) => {
+    if (conf >= 0.85) return { text: "text-emerald-400", bar: "bg-emerald-500", label: "High" };
+    if (conf >= 0.6) return { text: "text-amber-400", bar: "bg-amber-500", label: "Moderate" };
+    return { text: "text-red-400", bar: "bg-red-500", label: "Low" };
   };
 
+  const confStyle = getConfidenceStyle(report.confidence);
   const isRollback = report.proposed_action?.action_type === "rollback";
 
   return (
-    <div className="rounded-xl border border-white/10 bg-zinc-900/70 backdrop-blur-md p-5 space-y-4">
-      {/* Top Banner: Service, Priority, Confidence */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-zinc-800">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span
-              className={`text-xs font-mono font-bold px-2.5 py-1 rounded-md border ${
-                report.severity === "P1"
-                  ? "bg-rose-950/80 text-rose-300 border-rose-800"
-                  : report.severity === "P2"
-                  ? "bg-amber-950/80 text-amber-300 border-amber-800"
-                  : "bg-zinc-800 text-zinc-300 border-zinc-700"
-              }`}
-            >
-              {report.severity}
-            </span>
-            <h3 className="font-bold text-base text-white tracking-tight">
-              {report.service}
-            </h3>
-          </div>
-
+    <div className="rounded-md border border-zinc-800/90 bg-[#111113] p-5 space-y-4">
+      {/* Top Banner */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-zinc-800/90">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <span
-            className={`text-xs font-mono px-2 py-0.5 rounded border uppercase font-semibold ${
-              isRollback
-                ? "bg-cyan-950/80 text-cyan-300 border-cyan-800"
-                : "bg-amber-950/80 text-amber-300 border-amber-800"
+            className={`font-mono text-[11px] tabular-nums px-1.5 py-0.5 rounded border ${
+              report.severity === "P1"
+                ? "bg-red-500/10 text-red-400 border-red-500/20"
+                : report.severity === "P2"
+                ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                : "bg-zinc-800 text-zinc-300 border-zinc-700"
             }`}
           >
-            Proposed Action: {report.proposed_action?.action_type}
+            {report.severity}
+          </span>
+          <h3 className="font-semibold text-sm text-zinc-100 font-mono">
+            {report.service}
+          </h3>
+          <span
+            className={`font-mono text-[11px] uppercase px-1.5 py-0.5 rounded border ${
+              isRollback
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+            }`}
+          >
+            proposed: {report.proposed_action?.action_type}
           </span>
         </div>
 
-        {/* Calibrated Confidence Gauge */}
+        {/* Confidence Calibration */}
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <div className="text-[10px] uppercase font-mono text-zinc-400">
-              Confidence Calibration
+            <div className="text-[10px] font-mono uppercase text-zinc-500">
+              Confidence
             </div>
-            <div className="text-sm font-mono font-bold text-white flex items-center justify-end gap-1.5">
-              <span className={getConfidenceColor(report.confidence).split(" ")[0]}>
+            <div className="font-mono text-xs tabular-nums flex items-center justify-end gap-1.5">
+              <span className={`font-semibold ${confStyle.text}`}>
                 {confidencePct}%
               </span>
-              <span className="text-[11px] text-zinc-500 font-normal">
-                ({report.confidence >= 0.85 ? "High / Tri-Verified" : report.confidence >= 0.6 ? "Moderate" : "Low / Inconclusive"})
-              </span>
+              <span className="text-zinc-500">({confStyle.label})</span>
             </div>
           </div>
-
-          <div className="w-24 h-2 rounded-full bg-zinc-800 overflow-hidden border border-zinc-700">
+          <div className="w-20 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
             <div
-              className={`h-full transition-all duration-500 ${getConfidenceColor(report.confidence).split(" ")[1]}`}
+              className={`h-full transition-all duration-300 ${confStyle.bar}`}
               style={{ width: `${confidencePct}%` }}
             />
           </div>
@@ -93,131 +86,140 @@ export const TriageReportPanel: React.FC<TriageReportPanelProps> = ({ report }) 
       </div>
 
       {/* Root Cause Summary */}
-      <div>
-        <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-400 mb-1.5 flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
-          <span>Root Cause Summary</span>
-        </h4>
-        <div className="rounded-lg bg-zinc-950/70 border border-zinc-800/80 p-3.5 text-xs text-zinc-200 leading-relaxed font-sans">
+      <div className="space-y-1.5">
+        <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+          Root Cause Summary
+        </div>
+        <div className="rounded-md bg-[#0e0e11] border border-zinc-800/90 p-3.5 text-xs text-zinc-200 leading-relaxed">
           {report.root_cause_summary}
         </div>
       </div>
 
-      {/* Git SHA Comparison Bar (if Culprit or Target exists) */}
+      {/* Git SHA Trajectory */}
       {(report.culprit_sha || report.proposed_action?.target_sha) && (
-        <div className="rounded-lg border border-cyan-500/20 bg-gradient-to-r from-cyan-950/30 via-zinc-950 to-indigo-950/30 p-3.5 space-y-2">
-          <div className="text-[11px] font-mono text-zinc-400 flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-cyan-300 font-semibold">
-              <GitBranch className="h-3.5 w-3.5" />
-              Git State Trajectory
-            </span>
-            <span className="text-[10px] text-zinc-500">Service: {report.service}</span>
+        <div className="rounded-md border border-zinc-800/90 bg-[#0e0e11] p-3.5 space-y-2">
+          <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500">
+            <span className="uppercase tracking-wider">Git Commit Diff</span>
+            <span>{report.service}</span>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-zinc-900/80 rounded-md p-2.5 border border-white/5 font-mono text-xs">
-            {/* Culprit SHA */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 font-mono text-xs pt-1">
+            {/* Culprit */}
             <div className="flex items-center gap-2">
-              <span className="text-rose-400 font-medium text-[11px]">Culprit Commit:</span>
+              <span className="text-zinc-500 text-[11px]">Culprit:</span>
               {report.culprit_sha ? (
                 <button
+                  type="button"
                   onClick={() => copyToClipboard(report.culprit_sha!, "culprit")}
-                  className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-rose-950/60 border border-rose-800/60 text-rose-300 hover:bg-rose-900/60 transition group"
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 border border-red-500/30 text-red-400 hover:border-red-500/50 transition-colors"
                 >
-                  <GitCommit className="h-3 w-3 text-rose-400" />
-                  <span className="font-bold">{report.culprit_sha}</span>
-                  <Copy className="h-2.5 w-2.5 text-rose-400/60 group-hover:text-rose-300" />
+                  <GitCommit className="w-3 h-3" />
+                  <span>{report.culprit_sha}</span>
+                  {copiedKey === "culprit" ? (
+                    <Check className="w-3 h-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-3 h-3 text-zinc-500" />
+                  )}
                 </button>
               ) : (
-                <span className="text-zinc-500 text-xs italic">None (External / DNS)</span>
+                <span className="text-zinc-500">none (external dependency)</span>
               )}
             </div>
 
-            <ArrowRight className="h-4 w-4 text-zinc-600 hidden sm:block" />
+            <ArrowRight className="w-3.5 h-3.5 text-zinc-600 hidden sm:block" />
 
-            {/* Target Rollback SHA */}
+            {/* Target */}
             <div className="flex items-center gap-2">
-              <span className="text-emerald-400 font-medium text-[11px]">Rollback Target:</span>
+              <span className="text-zinc-500 text-[11px]">Rollback Target:</span>
               {report.proposed_action?.target_sha ? (
                 <button
+                  type="button"
                   onClick={() => copyToClipboard(report.proposed_action.target_sha!, "target")}
-                  className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/60 text-emerald-300 hover:bg-emerald-900/60 transition group"
+                  className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-900 border border-emerald-500/30 text-emerald-400 hover:border-emerald-500/50 transition-colors"
                 >
-                  <RotateCcw className="h-3 w-3 text-emerald-400" />
-                  <span className="font-bold">{report.proposed_action.target_sha}</span>
-                  <Copy className="h-2.5 w-2.5 text-emerald-400/60 group-hover:text-emerald-300" />
+                  <RotateCcw className="w-3 h-3" />
+                  <span>{report.proposed_action.target_sha}</span>
+                  {copiedKey === "target" ? (
+                    <Check className="w-3 h-3 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-3 h-3 text-zinc-500" />
+                  )}
                 </button>
               ) : (
-                <span className="text-zinc-500 text-xs italic">N/A (Escalate Only)</span>
+                <span className="text-zinc-500">N/A (escalate only)</span>
               )}
             </div>
           </div>
-          {copiedKey && (
-            <p className="text-[10px] text-emerald-400 font-mono text-right">
-              Copied {copiedKey} SHA to clipboard!
-            </p>
-          )}
         </div>
       )}
 
-      {/* Action Rationale */}
-      <div className="rounded-lg bg-zinc-950/40 border border-zinc-800 p-3 text-xs space-y-1">
-        <span className="text-[10px] uppercase font-mono text-zinc-500 font-semibold">
+      {/* Remediation Rationale */}
+      <div className="space-y-1.5">
+        <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500">
           Remediation Rationale
-        </span>
-        <p className="text-zinc-300 leading-relaxed font-sans">
+        </div>
+        <div className="rounded-md bg-[#0e0e11] border border-zinc-800/90 p-3 text-xs text-zinc-300 leading-relaxed">
           {report.proposed_action?.rationale}
-        </p>
+        </div>
       </div>
 
-      {/* Two Column Section: Runbook References & Next Steps */}
+      {/* Runbooks & Next Steps */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-        {/* Runbook References */}
-        <div className="space-y-2">
-          <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-            <BookOpen className="h-3.5 w-3.5 text-cyan-400" />
-            <span>Active Runbooks ({report.runbook_references?.length || 0})</span>
-          </h4>
+        {/* Active Runbooks */}
+        <div className="space-y-1.5">
+          <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 flex items-center justify-between">
+            <span>Active Runbooks</span>
+            <span className="tabular-nums">{report.runbook_references?.length || 0}</span>
+          </div>
           <div className="space-y-1.5">
             {report.runbook_references && report.runbook_references.length > 0 ? (
               report.runbook_references.map((rb) => (
-                <div
+                <button
                   key={rb}
+                  type="button"
                   onClick={() => copyToClipboard(rb, rb)}
-                  className="group flex items-center justify-between p-2 rounded-md bg-zinc-950/60 border border-zinc-800 hover:border-cyan-500/40 text-xs font-mono text-cyan-300 cursor-pointer transition"
+                  className="w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-md bg-[#0e0e11] border border-zinc-800/90 hover:border-zinc-700 text-xs font-mono text-emerald-400 text-left transition-colors"
                 >
-                  <span className="truncate">{rb}</span>
-                  <Copy className="h-3 w-3 text-zinc-500 group-hover:text-cyan-300" />
-                </div>
+                  <span className="inline-flex items-center gap-1.5 min-w-0">
+                    <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{rb}</span>
+                  </span>
+                  {copiedKey === rb ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                  )}
+                </button>
               ))
             ) : (
-              <p className="text-xs text-zinc-500 italic p-2 bg-zinc-950/40 rounded border border-zinc-850">
-                No active runbook matched this failure mode.
-              </p>
+              <div className="p-2.5 rounded-md bg-[#0e0e11] border border-zinc-800/90 text-xs text-zinc-500">
+                No active runbook matched.
+              </div>
             )}
           </div>
         </div>
 
         {/* Recommended Next Steps */}
-        <div className="space-y-2">
-          <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-            <ListChecks className="h-3.5 w-3.5 text-indigo-400" />
-            <span>On-Call Next Steps ({report.recommended_next_steps?.length || 0})</span>
-          </h4>
+        <div className="space-y-1.5">
+          <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 flex items-center justify-between">
+            <span>On-Call Next Steps</span>
+            <span className="tabular-nums">{report.recommended_next_steps?.length || 0}</span>
+          </div>
           <div className="space-y-1.5">
             {report.recommended_next_steps && report.recommended_next_steps.length > 0 ? (
               report.recommended_next_steps.map((step, idx) => (
                 <div
                   key={idx}
-                  className="flex items-start gap-2 p-2 rounded-md bg-zinc-950/60 border border-zinc-800 text-xs text-zinc-300"
+                  className="flex items-start gap-2 px-2.5 py-2 rounded-md bg-[#0e0e11] border border-zinc-800/90 text-xs text-zinc-300"
                 >
-                  <CheckSquare className="h-3.5 w-3.5 text-indigo-400 shrink-0 mt-0.5" />
+                  <CheckSquare className="w-3.5 h-3.5 text-zinc-500 shrink-0 mt-0.5" />
                   <span className="leading-snug">{step}</span>
                 </div>
               ))
             ) : (
-              <p className="text-xs text-zinc-500 italic p-2 bg-zinc-950/40 rounded border border-zinc-850">
-                No specific follow-up actions recorded.
-              </p>
+              <div className="p-2.5 rounded-md bg-[#0e0e11] border border-zinc-800/90 text-xs text-zinc-500">
+                No follow-up steps recorded.
+              </div>
             )}
           </div>
         </div>

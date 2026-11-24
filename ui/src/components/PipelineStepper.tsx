@@ -1,11 +1,14 @@
 import React from "react";
 import {
   CheckCircle2,
+  Eye,
+  FileText,
+  Loader2,
   Lock,
   Search,
-  Sparkles,
+  Terminal,
   UserCheck,
-  Zap,
+  XCircle,
 } from "lucide-react";
 import { IncidentStatus } from "../types/tracegate";
 
@@ -18,18 +21,7 @@ export const PipelineStepper: React.FC<PipelineStepperProps> = ({
   status,
   awaitingApproval,
 }) => {
-  // Steps:
-  // 1: Investigate (Read-only :8010)
-  // 2: Synthesize (Read-only :8010)
-  // [Security Boundary Divider]
-  // 3: Human Approval Gate (interrupt)
-  // 4: Write Execution (:8004)
-
   const getStepState = (stepIndex: number) => {
-    // 0: investigating
-    // 1: synthesizing
-    // 2: awaiting_approval
-    // 3: executed / rejected
     if (status === "investigating") {
       if (stepIndex === 0) return "active";
       return "pending";
@@ -41,7 +33,7 @@ export const PipelineStepper: React.FC<PipelineStepperProps> = ({
     }
     if (status === "awaiting_approval" || awaitingApproval) {
       if (stepIndex <= 1) return "completed";
-      if (stepIndex === 2) return "paused"; // amber pause
+      if (stepIndex === 2) return "paused";
       return "pending";
     }
     if (status === "executed") {
@@ -56,51 +48,57 @@ export const PipelineStepper: React.FC<PipelineStepperProps> = ({
 
   const steps = [
     {
-      label: "1. Investigate",
+      index: "01",
+      label: "Investigate",
       desc: "Telemetry, Git & Runbooks",
       port: ":8010",
       icon: Search,
-      isReadOnly: true,
     },
     {
-      label: "2. Synthesize",
+      index: "02",
+      label: "Synthesize",
       desc: "Calibrate Confidence & Plan",
       port: ":8010",
-      icon: Sparkles,
-      isReadOnly: true,
+      icon: FileText,
     },
     {
-      label: "3. Approval Gate",
-      desc: "Human Operator Review",
+      index: "03",
+      label: "Approval Gate",
+      desc: "LangGraph interrupt()",
       port: "HITL",
       icon: UserCheck,
-      isReadOnly: false,
     },
     {
-      label: "4. Remediation",
-      desc: "Deterministic Write Dispatch",
+      index: "04",
+      label: "Remediate",
+      desc: "Write Dispatch & Audit",
       port: ":8004",
-      icon: Zap,
-      isReadOnly: false,
+      icon: Terminal,
     },
   ];
 
+  const isPaused = status === "awaiting_approval" || Boolean(awaitingApproval);
+
   return (
-    <div className="rounded-xl border border-white/10 bg-zinc-900/60 backdrop-blur-md p-4">
-      {/* Zone Header Labels */}
-      <div className="flex items-center justify-between mb-3 text-[10px] uppercase font-mono tracking-wider">
-        <div className="flex items-center gap-1.5 text-cyan-400 font-semibold">
-          <Search className="h-3 w-3" />
-          <span>AUTONOMOUS READ-ONLY INVESTIGATION ZONE (:8010)</span>
-        </div>
-        <div className="flex items-center gap-1.5 text-amber-400 font-semibold">
-          <Lock className="h-3 w-3" />
-          <span>WRITE-GATED REMEDIATION ZONE (:8004)</span>
-        </div>
+    <div className="rounded-md border border-zinc-800/90 bg-[#111113] p-4 space-y-3">
+      {/* Boundary Legend */}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-zinc-400">
+        <span className="inline-flex items-center gap-1.5">
+          <Eye className="w-3.5 h-3.5 text-zinc-500" />
+          <span>RO :8010 · Investigate &amp; Synthesize</span>
+        </span>
+        <span
+          className={`inline-flex items-center gap-1.5 ${
+            isPaused ? "text-amber-400" : "text-zinc-400"
+          }`}
+        >
+          <Lock className={`w-3.5 h-3.5 ${isPaused ? "text-amber-400" : "text-zinc-500"}`} />
+          <span>WG :8004 · Human Gate &amp; Write</span>
+        </span>
       </div>
 
-      {/* Stepper Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 relative">
+      {/* 4-Stage Pipeline Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 border border-zinc-800/90 rounded-md divide-y sm:divide-y-0 sm:divide-x divide-zinc-800/90 bg-[#0e0e11] overflow-hidden">
         {steps.map((step, idx) => {
           const state = getStepState(idx);
           const Icon = step.icon;
@@ -108,82 +106,80 @@ export const PipelineStepper: React.FC<PipelineStepperProps> = ({
           return (
             <div
               key={step.label}
-              className={`relative rounded-lg p-3 border transition-all ${
+              className={`p-3 transition-colors ${
                 state === "paused"
-                  ? "bg-amber-950/40 border-amber-500 shadow-lg shadow-amber-950/50 ring-1 ring-amber-500 animate-glow-amber"
+                  ? "bg-amber-500/[0.04] ring-1 ring-inset ring-amber-500/40"
                   : state === "active"
-                  ? "bg-cyan-950/40 border-cyan-500 shadow-md shadow-cyan-950/30 ring-1 ring-cyan-500/50"
-                  : state === "completed"
-                  ? "bg-zinc-900/80 border-emerald-500/30 text-zinc-300"
+                  ? "bg-zinc-900"
                   : state === "rejected"
-                  ? "bg-rose-950/40 border-rose-500/50 text-rose-300"
-                  : "bg-zinc-950/40 border-zinc-800/80 text-zinc-500"
+                  ? "bg-red-500/[0.03]"
+                  : "bg-transparent"
               }`}
             >
-              {/* Top Row: Icon + Port */}
-              <div className="flex items-center justify-between mb-1.5">
-                <div
-                  className={`p-1.5 rounded-md ${
+              {/* Header row */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Icon
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      state === "paused"
+                        ? "text-amber-400"
+                        : state === "active"
+                        ? "text-zinc-200"
+                        : state === "completed"
+                        ? "text-emerald-400"
+                        : state === "rejected"
+                        ? "text-red-400"
+                        : "text-zinc-500"
+                    }`}
+                  />
+                  <span className="text-xs font-medium text-zinc-100 truncate">
+                    {step.index} {step.label}
+                  </span>
+                </div>
+
+                <span
+                  className={`font-mono text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${
                     state === "paused"
-                      ? "bg-amber-500/20 text-amber-300"
-                      : state === "active"
-                      ? "bg-cyan-500/20 text-cyan-300 animate-pulse"
-                      : state === "completed"
-                      ? "bg-emerald-500/10 text-emerald-400"
-                      : state === "rejected"
-                      ? "bg-rose-500/20 text-rose-400"
-                      : "bg-zinc-800 text-zinc-500"
+                      ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                      : "bg-zinc-900 text-zinc-400 border-zinc-800"
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <span
-                    className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                      step.isReadOnly
-                        ? "bg-cyan-950/60 text-cyan-400 border border-cyan-800/50"
-                        : "bg-amber-950/60 text-amber-400 border border-amber-800/50"
-                    }`}
-                  >
-                    {step.port}
-                  </span>
-                  {state === "completed" && (
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                  )}
-                  {state === "paused" && (
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                    </span>
-                  )}
-                </div>
+                  {step.port}
+                </span>
               </div>
 
-              {/* Title & Desc */}
-              <div className="font-semibold text-xs text-zinc-100 flex items-center gap-1">
-                {step.label}
+              {/* Description */}
+              <div className="text-[11px] text-zinc-500 mt-1 truncate">
+                {step.desc}
               </div>
-              <p className="text-[11px] text-zinc-400 mt-0.5 truncate">{step.desc}</p>
 
-              {/* Status footer */}
-              <div className="mt-2 text-[10px] font-mono uppercase tracking-wider">
+              {/* Status line */}
+              <div className="mt-2.5 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider">
                 {state === "paused" ? (
-                  <span className="text-amber-400 font-bold flex items-center gap-1">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-                    PAUSED AT APPROVAL
-                  </span>
+                  <>
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    <span className="text-amber-400 font-medium">Awaiting Sign-Off</span>
+                  </>
                 ) : state === "active" ? (
-                  <span className="text-cyan-400 font-bold flex items-center gap-1">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                    IN PROGRESS...
-                  </span>
+                  <>
+                    <Loader2 className="w-3 h-3 text-zinc-300 animate-spin" />
+                    <span className="text-zinc-300">In Progress</span>
+                  </>
                 ) : state === "completed" ? (
-                  <span className="text-emerald-400">DONE</span>
+                  <>
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span className="text-emerald-400">Done</span>
+                  </>
                 ) : state === "rejected" ? (
-                  <span className="text-rose-400 font-bold">REJECTED BY HUMAN</span>
+                  <>
+                    <XCircle className="w-3 h-3 text-red-400" />
+                    <span className="text-red-400">Rejected</span>
+                  </>
                 ) : (
-                  <span className="text-zinc-600">PENDING</span>
+                  <>
+                    <span className="h-1.5 w-1.5 rounded-full bg-zinc-700" />
+                    <span className="text-zinc-600">Pending</span>
+                  </>
                 )}
               </div>
             </div>

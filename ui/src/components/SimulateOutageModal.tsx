@@ -1,21 +1,14 @@
 import React, { useState } from "react";
-import {
-  AlertCircle,
-  Clock,
-  Code2,
-  Flame,
-  Layers,
-  Send,
-  Sparkles,
-  X,
-} from "lucide-react";
+import { AlertCircle, Clock, Code2, Layers, Send, X } from "lucide-react";
 import { PRESET_SCENARIOS } from "../data/scenarios";
 import { AlertPayload } from "../types/tracegate";
 
 interface SimulateOutageModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmitAlert: (alert: AlertPayload) => Promise<{ incidentId: string; status: string } | null>;
+  onSubmitAlert: (
+    alert: AlertPayload
+  ) => Promise<{ incidentId: string; status: string } | null>;
 }
 
 export const SimulateOutageModal: React.FC<SimulateOutageModalProps> = ({
@@ -79,163 +72,178 @@ export const SimulateOutageModal: React.FC<SimulateOutageModalProps> = ({
     }
   };
 
+  const selectedScenario = PRESET_SCENARIOS.find((s) => s.id === selectedPresetId);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-3xl rounded-xl bg-zinc-900 border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75">
+      <div className="relative w-full max-w-3xl rounded-md bg-[#111113] border border-zinc-800 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950/60">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-cyan-950 border border-cyan-800/40 text-cyan-400">
-              <Flame className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-base text-white">Simulate Service Outage</h2>
-              <p className="text-xs text-zinc-400">
-                Trigger mock incident alerts to verify autonomous read-only triage and HITL gating.
-              </p>
-            </div>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800/90 bg-[#0e0e11]">
+          <div>
+            <h2 className="font-semibold text-sm text-zinc-100">
+              Simulate Service Outage
+            </h2>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Dispatch a sandbox scenario or custom Alertmanager payload to <code className="font-mono text-zinc-300">POST /webhooks/alertmanager</code>.
+            </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition"
+            className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 transition-colors"
+            aria-label="Close modal"
           >
-            <X className="h-5 w-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Tab Toggle */}
-        <div className="flex items-center justify-between px-6 py-2.5 border-b border-zinc-800 bg-zinc-900/50">
-          <div className="flex items-center gap-2">
+        {/* Flush Tab Toggle + Fresh Timestamp Option */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 border-b border-zinc-800/90 bg-[#111113]">
+          <div className="flex items-center gap-5">
             <button
+              type="button"
               onClick={() => setTab("presets")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
+              className={`py-2.5 text-xs font-medium border-b-2 -mb-px inline-flex items-center gap-1.5 transition-colors ${
                 tab === "presets"
-                  ? "bg-zinc-800 text-cyan-400 border border-cyan-500/20 shadow-sm"
-                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+                  ? "border-zinc-100 text-zinc-100"
+                  : "border-transparent text-zinc-500 hover:text-zinc-300"
               }`}
             >
-              <Layers className="h-3.5 w-3.5" />
-              <span>Preset Scenarios ({PRESET_SCENARIOS.length})</span>
+              <Layers className="w-3.5 h-3.5 text-zinc-400" />
+              <span>Preset Scenarios</span>
+              <span className="font-mono text-[11px] tabular-nums text-zinc-500">
+                {PRESET_SCENARIOS.length}
+              </span>
             </button>
+
             <button
+              type="button"
               onClick={() => setTab("custom")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition ${
+              className={`py-2.5 text-xs font-medium border-b-2 -mb-px inline-flex items-center gap-1.5 transition-colors ${
                 tab === "custom"
-                  ? "bg-zinc-800 text-cyan-400 border border-cyan-500/20 shadow-sm"
-                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/50"
+                  ? "border-zinc-100 text-zinc-100"
+                  : "border-transparent text-zinc-500 hover:text-zinc-300"
               }`}
             >
-              <Code2 className="h-3.5 w-3.5" />
+              <Code2 className="w-3.5 h-3.5 text-zinc-400" />
               <span>Custom Alert JSON</span>
             </button>
           </div>
 
-          {/* Fresh Timestamp Toggle */}
-          <label className="flex items-center gap-2 text-xs font-mono text-zinc-300 cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-xs font-mono text-zinc-400 cursor-pointer select-none py-2">
             <input
               type="checkbox"
               checked={bypassDedupe}
               onChange={(e) => setBypassDedupe(e.target.checked)}
-              className="rounded bg-zinc-800 border-zinc-700 text-cyan-500 focus:ring-cyan-500/40"
+              className="rounded bg-zinc-950 border-zinc-700 accent-zinc-100"
             />
-            <span className="flex items-center gap-1 text-zinc-400">
-              <Clock className="h-3 w-3 text-cyan-400" />
-              Fresh timestamp (bypass dedupe)
+            <span className="inline-flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 text-zinc-500" />
+              <span>Fresh timestamp (bypass dedupe)</span>
             </span>
           </label>
         </div>
 
-        {/* Content Body */}
-        <div className="p-6 overflow-y-auto space-y-4 flex-1">
+        {/* Body */}
+        <div className="p-5 overflow-y-auto space-y-4 flex-1">
           {errorMsg && (
-            <div className="flex items-center gap-2 p-3 text-xs bg-rose-950/60 border border-rose-800/60 text-rose-300 rounded-lg">
-              <AlertCircle className="h-4 w-4 shrink-0" />
+            <div className="flex items-center gap-2 px-3 py-2 text-xs bg-red-500/5 border border-red-500/30 text-red-400 rounded-md">
+              <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
 
           {tab === "presets" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
               {PRESET_SCENARIOS.map((scenario) => {
                 const isSelected = selectedPresetId === scenario.id;
+                const isRollback = scenario.expectedAction === "rollback";
+
                 return (
-                  <div
+                  <button
                     key={scenario.id}
+                    type="button"
                     onClick={() => setSelectedPresetId(scenario.id)}
-                    className={`cursor-pointer rounded-lg p-3.5 border transition-all text-left flex flex-col justify-between ${
+                    className={`rounded-md p-3.5 border text-left flex flex-col justify-between transition-colors ${
                       isSelected
-                        ? "bg-gradient-to-br from-cyan-950/40 to-zinc-900 border-cyan-500/60 shadow-lg shadow-cyan-950/30 ring-1 ring-cyan-500/40"
-                        : "bg-zinc-900/60 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/40"
+                        ? "bg-zinc-900 border-zinc-400"
+                        : "bg-[#0e0e11] border-zinc-800/90 hover:border-zinc-700"
                     }`}
                   >
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <span className="font-medium text-sm text-zinc-100 flex items-center gap-1.5">
-                          {isSelected && <Sparkles className="h-3.5 w-3.5 text-cyan-400" />}
+                        <span className="font-medium text-xs text-zinc-100">
                           {scenario.name}
                         </span>
                         <span
-                          className={`text-[10px] uppercase font-mono px-1.5 py-0.5 rounded font-semibold ${
-                            scenario.expectedAction === "rollback"
-                              ? "bg-emerald-950 text-emerald-400 border border-emerald-800/60"
-                              : "bg-amber-950 text-amber-400 border border-amber-800/60"
+                          className={`text-[10px] uppercase font-mono px-1.5 py-0.5 rounded border shrink-0 ${
+                            isRollback
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              : "bg-amber-500/10 text-amber-400 border-amber-500/20"
                           }`}
                         >
-                          Expected: {scenario.expectedAction}
+                          {scenario.expectedAction}
                         </span>
                       </div>
-                      <p className="text-xs text-zinc-400 line-clamp-2 mb-2">
+                      <p className="text-xs text-zinc-400 line-clamp-2 mb-2.5">
                         {scenario.description}
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 pt-2 border-t border-zinc-800/60">
-                      <span>svc: <span className="text-zinc-300">{scenario.service}</span></span>
-                      <span className="text-zinc-400 text-[10px]">{scenario.category}</span>
+                    <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 pt-2 border-t border-zinc-800/80 w-full">
+                      <span className="text-zinc-300">{scenario.service}</span>
+                      <span>{scenario.category}</span>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
           ) : (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-zinc-400">
-                <span>Alertmanager Webhook Payload (JSON):</span>
-                <span className="font-mono text-[11px] text-zinc-500">POST /webhooks/alertmanager</span>
+                <span>Alertmanager Webhook Payload (JSON)</span>
+                <span className="font-mono text-[11px] text-zinc-500">
+                  POST /webhooks/alertmanager
+                </span>
               </div>
               <textarea
                 value={customJson}
                 onChange={(e) => setCustomJson(e.target.value)}
                 rows={12}
-                className="w-full bg-zinc-950 font-mono text-xs text-zinc-200 border border-zinc-800 rounded-lg p-3.5 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/50"
+                className="w-full bg-zinc-950 font-mono text-xs text-zinc-200 border border-zinc-800/90 rounded-md p-3 focus:border-zinc-500 focus:outline-none"
               />
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-zinc-800 bg-zinc-950/60">
-          <div className="text-xs text-zinc-400">
+        <div className="flex items-center justify-between px-5 py-3.5 border-t border-zinc-800/90 bg-[#0e0e11]">
+          <div className="text-xs font-mono text-zinc-400">
             {tab === "presets" ? (
-              <span>Target: <span className="font-mono text-cyan-300">{PRESET_SCENARIOS.find(s => s.id === selectedPresetId)?.service}</span></span>
+              <span>
+                target: <span className="text-zinc-200">{selectedScenario?.service}</span>
+              </span>
             ) : (
-              <span>Custom payload will be dispatched to triage queue</span>
+              <span>target: custom webhook payload</span>
             )}
           </div>
-          <div className="flex items-center gap-3">
+
+          <div className="flex items-center gap-2.5">
             <button
+              type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-3.5 py-1.5 rounded-lg border border-zinc-700 hover:bg-zinc-800 text-xs text-zinc-300 transition"
+              className="h-8 px-3 rounded-md border border-zinc-800 hover:bg-zinc-900 text-xs text-zinc-300 transition-colors"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium shadow-md shadow-cyan-600/30 border border-cyan-400/30 transition active:scale-95 disabled:opacity-50"
+              className="h-8 px-4 rounded-md bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-medium inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
             >
-              <Send className="h-3.5 w-3.5" />
+              <Send className="w-3.5 h-3.5" />
               <span>{isSubmitting ? "Dispatching..." : "Fire Alert Webhook"}</span>
             </button>
           </div>
