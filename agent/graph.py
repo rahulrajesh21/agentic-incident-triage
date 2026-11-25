@@ -1,8 +1,10 @@
 import asyncio
+import json
+import re
 import time
 from typing import Annotated, Any, Literal, TypedDict
 
-from langchain_core.messages import AnyMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.types import Command, interrupt
@@ -19,6 +21,7 @@ from core.tracing import TraceLogger, extract_token_usage
 
 MAX_STEPS = 6
 TOOL_TIMEOUT_SEC = 4.0
+MAX_TOOL_OUTPUT_CHARS = 6000
 
 
 class TriageState(TypedDict):
@@ -31,13 +34,27 @@ class TriageState(TypedDict):
     approved: bool | None
     approved_by: str | None
     remediation_result: dict[str, Any] | None
+    error: str | None
     status: Literal[
         "investigating",
         "synthesizing",
         "awaiting_approval",
         "executed",
         "rejected",
+        "failed",
     ]
+
+
+def _extract_triage_report(raw_text: str) -> TriageReport:
+    """Extract and validate a TriageReport JSON object from raw model output."""
+    cleaned = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
+    fence = re.search(r"```(?:json)?\s*(\{.*\})\s*```", cleaned, flags=re.DOTALL)
+    candidate = fence.group(1) if fence else cleaned
+    start = candidate.find("{")
+    if start == -1:
+        raise ValueError("No JSON object found in synthesis response.")
+    obj, _ = json.JSONDecoder().raw_decode(candidate[start:])
+    return TriageReport.model_validate(obj)
 
 
 def build_triage_graph(
@@ -56,10 +73,28 @@ def build_triage_graph(
     tool_map = {t.name: t for t in readonly_tools}
     llm_with_tools = llm.bind_tools(readonly_tools)
 
-    structured_kwargs: dict[str, Any] = {"include_raw": True}
-    if llm_config and llm_config.structured_method:
-        structured_kwargs["method"] = llm_config.structured_method
-    structured_llm = llm.with_structured_output(TriageReport, **structured_kwargs)
+    structured_method = llm_config.structured_method if llm_config else None
+    structured_stream_llm = llm.bind(
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "TriageReport",
+                "strict": True,
+                "schema": TriageReport.model_json_schema(),
+            },
+        }
+    )
+    structured_fc_llm = (
+        llm.with_structured_output(TriageReport, method="function_calling", include_raw=True)
+        if structured_method == "function_calling"
+        else None
+    )
+
+    async def _stream_collect(runnable: Any, msgs: list[Any]) -> Any:
+        merged = None
+        async for chunk in runnable.astream(msgs):
+            merged = chunk if merged is None else merged + chunk
+        return merged
 
     # 1. Read-only reasoning node
     async def investigate(state: TriageState) -> dict:
@@ -118,6 +153,8 @@ def build_triage_graph(
                         timeout=TOOL_TIMEOUT_SEC,
                     )
                     content = str(result)
+                    if len(content) > MAX_TOOL_OUTPUT_CHARS:
+                        content = content[:MAX_TOOL_OUTPUT_CHARS] + "\n...[truncated]"
                     status = "ok"
                     degraded_source = None
                 except asyncio.TimeoutError:
@@ -162,7 +199,7 @@ def build_triage_graph(
             return "tools"
         return "synthesize"
 
-    # 4. Structured synthesis node (Pydantic TriageReport + token tracing)
+    # 4. Structured synthesis node (streaming SSE + fallback JSON extraction)
     async def synthesize(state: TriageState) -> dict:
         degraded = state.get("degraded_sources", [])
         degraded_note = f"Degraded/unavailable sources: {degraded}"
@@ -172,13 +209,65 @@ def build_triage_graph(
         ]
 
         started = time.perf_counter()
-        output = await structured_llm.ainvoke(prompt_msgs)
-        latency_ms = (time.perf_counter() - started) * 1000
+        raw_msg: Any = None
+        parsed: TriageReport | None = None
+        parsing_error: Any = None
+        fallback_used = False
 
-        raw_msg = output.get("raw")
-        parsed: TriageReport | None = output.get("parsed")
-        parsing_error = output.get("parsing_error")
-        prompt_toks, completion_toks = extract_token_usage(raw_msg)
+        try:
+            if structured_fc_llm is not None:
+                output = await structured_fc_llm.ainvoke(prompt_msgs)
+                raw_msg = output.get("raw")
+                parsed = output.get("parsed")
+                parsing_error = output.get("parsing_error")
+            else:
+                raw_msg = await _stream_collect(structured_stream_llm, prompt_msgs)
+                raw_text = str(getattr(raw_msg, "content", "") or "")
+                parsed = TriageReport.model_validate_json(raw_text)
+        except Exception as exc:
+            parsing_error = exc
+
+        if parsed is None and raw_msg is not None and getattr(raw_msg, "content", ""):
+            try:
+                parsed = _extract_triage_report(str(raw_msg.content))
+                parsing_error = None
+            except Exception as exc:
+                parsing_error = exc
+
+        # Streaming fallback for servers (e.g. llama.cpp) whose sampler rejects json_schema
+        if parsed is None:
+            fallback_used = True
+            evidence_lines = [
+                f"[{getattr(m, 'name', None) or 'alert'}]\n{m.content}"
+                for m in state["messages"]
+                if type(m).__name__ in ("HumanMessage", "ToolMessage")
+                and str(getattr(m, "content", "")).strip()
+            ]
+            digest = "\n\n".join(evidence_lines)
+            json_instruction = (
+                "Synthesize a TriageReport from the verified evidence below.\n"
+                "Respond with ONLY one valid JSON object matching these exact fields:\n"
+                '{"service": str, "severity": "P1"|"P2"|"P3", "root_cause_summary": str, '
+                '"culprit_sha": str|null, "evidence": [{"source": "telemetry"|"git"|"runbook", '
+                '"reference_id": str, "excerpt": str}], "runbook_references": [str], '
+                '"proposed_action": {"action_type": "rollback"|"escalate", "target_sha": str|null, '
+                '"rationale": str}, "confidence": float, "degraded_sources": [str], '
+                '"recommended_next_steps": [str]}\n\n'
+                f"=== INVESTIGATION EVIDENCE ===\n{digest}"
+            )
+            fallback_msgs = [
+                SystemMessage(content=f"{SYNTHESIZE_SYSTEM_PROMPT}\n{degraded_note}"),
+                HumanMessage(content=json_instruction),
+            ]
+            raw_msg = await _stream_collect(llm, fallback_msgs)
+            try:
+                parsed = _extract_triage_report(str(getattr(raw_msg, "content", "")))
+                parsing_error = None
+            except Exception as exc:
+                parsing_error = exc
+
+        latency_ms = (time.perf_counter() - started) * 1000
+        prompt_toks, completion_toks = extract_token_usage(raw_msg) if raw_msg else (0, 0)
 
         trace.log_llm_call(
             incident_id=state["incident_id"],
@@ -191,6 +280,7 @@ def build_triage_graph(
             status="ok" if parsed else "error",
             metadata={
                 "degraded_sources": degraded,
+                "fallback_json": fallback_used,
                 "proposed_action": parsed.proposed_action.action_type if parsed else None,
                 "parsing_error": str(parsing_error) if parsing_error else None,
             },
@@ -258,10 +348,9 @@ def build_triage_graph(
             tool_name = "escalate_incident"
             args = {
                 "service": report["service"],
-                "severity": severity,
                 "approved_by": approved_by,
                 "idempotency_key": f"{incident_id}:escalate:{severity}",
-                "reason": report["root_cause_summary"],
+                "reason": f"[{severity}] {report['root_cause_summary']}",
             }
 
         result = await call_remediation_tool(tool_name, args)

@@ -43,6 +43,11 @@ export const PipelineStepper: React.FC<PipelineStepperProps> = ({
       if (stepIndex <= 2) return "completed";
       return "rejected";
     }
+    if (status === "failed") {
+      if (stepIndex === 0) return "completed";
+      if (stepIndex === 1) return "failed";
+      return "pending";
+    }
     return "pending";
   };
 
@@ -111,7 +116,7 @@ export const PipelineStepper: React.FC<PipelineStepperProps> = ({
                   ? "bg-amber-500/[0.04] ring-1 ring-inset ring-amber-500/40"
                   : state === "active"
                   ? "bg-zinc-900"
-                  : state === "rejected"
+                  : state === "rejected" || state === "failed"
                   ? "bg-red-500/[0.03]"
                   : "bg-transparent"
               }`}
@@ -127,7 +132,7 @@ export const PipelineStepper: React.FC<PipelineStepperProps> = ({
                         ? "text-zinc-200"
                         : state === "completed"
                         ? "text-emerald-400"
-                        : state === "rejected"
+                        : state === "rejected" || state === "failed"
                         ? "text-red-400"
                         : "text-zinc-500"
                     }`}
@@ -174,6 +179,11 @@ export const PipelineStepper: React.FC<PipelineStepperProps> = ({
                   <>
                     <XCircle className="w-3 h-3 text-red-400" />
                     <span className="text-red-400">Rejected</span>
+                  </>
+                ) : state === "failed" ? (
+                  <>
+                    <XCircle className="w-3 h-3 text-red-400" />
+                    <span className="text-red-400">Failed</span>
                   </>
                 ) : (
                   <>

@@ -3,7 +3,8 @@ export type IncidentStatus =
   | "synthesizing"
   | "awaiting_approval"
   | "executed"
-  | "rejected";
+  | "rejected"
+  | "failed";
 
 export type SeverityLevel = "P1" | "P2" | "P3" | "critical" | "warning" | "info";
 
@@ -79,6 +80,7 @@ export interface IncidentDetail {
   approved?: boolean | null;
   approved_by?: string | null;
   remediation_result?: Record<string, unknown> | null;
+  error?: string | null;
   trace?: TraceData;
 }
 

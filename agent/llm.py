@@ -40,7 +40,10 @@ def get_llm(config: LLMConfig | None = None) -> tuple[ChatOpenAI, LLMConfig]:
         api_key=cfg.api_key,
         base_url=cfg.base_url,
         temperature=cfg.temperature,
+        streaming=True,
+        stream_usage=True,
         max_retries=2,
-        timeout=float(os.getenv("LLM_TIMEOUT_SEC", "120")),
+        timeout=float(os.getenv("LLM_TIMEOUT_SEC", "180")),
+        default_headers={"Connection": "close"},
     )
     return llm, cfg

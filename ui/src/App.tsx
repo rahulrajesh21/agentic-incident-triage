@@ -454,6 +454,15 @@ export const App: React.FC = () => {
 
                   {currentIncident.triage_report ? (
                     <TriageReportPanel report={currentIncident.triage_report} />
+                  ) : currentIncident.status === "failed" ? (
+                    <div className="rounded-md border border-red-500/30 bg-red-500/5 p-4 text-xs space-y-1.5">
+                      <div className="font-mono font-medium text-red-400 uppercase text-[11px]">
+                        Triage Execution Failed
+                      </div>
+                      <div className="font-mono text-zinc-300 break-words">
+                        {currentIncident.error || "Background triage failed before report synthesis."}
+                      </div>
+                    </div>
                   ) : (
                     <div className="rounded-md border border-zinc-800/90 bg-[#111113] p-6 flex items-center gap-3 text-xs text-zinc-400">
                       <Loader2 className="w-4 h-4 text-zinc-400 animate-spin shrink-0" />

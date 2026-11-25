@@ -19,7 +19,10 @@ sandbox/mock_repo/
 
 # Generated SQLite Databases
 sandbox/*.db
+sandbox/*.db-*
 *.db
+*.db-shm
+*.db-wal
 
 # OS / Editor files
 .DS_Store

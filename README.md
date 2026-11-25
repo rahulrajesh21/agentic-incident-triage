@@ -57,9 +57,10 @@ flowchart LR
 4. **Schema-Level Guardrails (`core/schemas.py`)**
    - `TriageReport` validates `confidence` bounds (`0.0 <= confidence <= 1.0`), enforces 7–40 character lowercase hex commit SHAs via `SHA_PATTERN` on rollbacks, strips `target_sha` to `None` on escalations, and rejects `target_sha == culprit_sha` in `@model_validator(mode="after")` so a broken commit cannot be selected as its own rollback target.
 
-5. **Bounded Execution & Graceful Degradation (`agent/graph.py`)**
+5. **Bounded Execution & Graceful Degradation (`agent/graph.py`, `agent/llm.py`, `api/main.py`)**
    - `should_continue` enforces a strict step cap (`MAX_STEPS = 6`) on investigation iterations.
-   - `run_tools` dispatches independent tool calls concurrently with `asyncio.gather` under a per-call timeout (`TOOL_TIMEOUT_SEC = 4.0`). Timeouts and errors return `TOOL_UNAVAILABLE` messages and record missing sources in `degraded_sources`, which `synthesize` merges into `TriageReport.degraded_sources` so runtime degradation cannot be omitted.
+   - `run_tools` dispatches independent tool calls concurrently with `asyncio.gather` under a per-call timeout (`TOOL_TIMEOUT_SEC = 4.0`) and caps individual tool payloads at `MAX_TOOL_OUTPUT_CHARS = 6000`. Timeouts and errors return `TOOL_UNAVAILABLE` messages and record missing sources in `degraded_sources`, which `synthesize` merges into `TriageReport.degraded_sources`.
+   - `get_llm()` enables SSE streaming (`streaming=True`, `stream_usage=True`) for both `investigate` and `synthesize`, with an automatic streaming plain-JSON fallback in `synthesize` for local inference servers whose samplers reject `json_schema`, and explicit `status: "failed"` + `error` state capture in `_run_triage`.
 
 6. **Hybrid Runbook Retrieval & Conflict Filtering (`mcp_server/servers/runbook_ingest.py`, `mcp_server/servers/runbook_server.py`)**
    - Runbooks in `sandbox/runbooks/` are chunked by Markdown headers (`#`, `##`, `###`) using `MarkdownHeaderTextSplitter`, preserving file-level `status` (`active` or `deprecated`) and `updated` frontmatter metadata and deterministic `reference_id`s (`{filename}#{slug}`).
@@ -72,7 +73,7 @@ flowchart LR
 | :--- | :--- | :--- | :--- | :--- |
 | Telemetry MCP | `mcp_server/servers/telemetry_server.py` | `:8001` | Read-Only (via `:8010`) | Queries `sandbox/telemetry.db` (`mode=ro`) for services, logs, traces, metrics, and anomaly deltas |
 | Git MCP | `mcp_server/servers/git_server.py` | `:8002` | Read-Only (via `:8010`) | Runs read-only `git log` and `git show` against `sandbox/mock_repo/` |
-| Runbook MCP | `mcp_server/servers/runbook_server.py` | `:8003` | Read-Only (via `:8010`) | Hybrid BM25 + Pinecone RRF search over indexed runbook sections |
+| Runbook MCP | `mcp_server/servers/runbook_server.py` | `:8003` | Read-Only (via `:8010`) | Hybrid BM25 + Pinecone RRF (`search_runbooks`), plus `list_runbooks` & `get_runbook` |
 | Remediation MCP | `mcp_server/servers/remediation_server.py` | `:8004` | Write-Gated (Isolated) | Executes `trigger_rollback` and `escalate_incident`, recording audit rows in `sandbox/audit.db` |
 | Read-Only Gateway | `mcp_server/gateway/gateway_server.py` | `:8010` | Read-Only Proxy | Mounts `:8001`, `:8002`, and `:8003` under `telemetry`, `git`, and `runbook` namespaces |
 | Control Plane API | `api/main.py` | `:8000` | Orchestration & HITL | Alertmanager webhook ingestion, deduplication, LangGraph execution, SQLite checkpointing, and traces |
@@ -126,7 +127,7 @@ OPENAI_API_KEY=sk-...
 # LLM_API_KEY=local
 # LLM_STRUCTURED_METHOD=function_calling
 # LLM_TEMPERATURE=0.0
-# LLM_TIMEOUT_SEC=120
+# LLM_TIMEOUT_SEC=180
 
 # Optional MCP / DB / UI overrides (defaults shown)
 # TELEMETRY_DB=sandbox/telemetry.db
@@ -151,16 +152,28 @@ source .venv/bin/activate
 pip install fastapi uvicorn python-dotenv pydantic \
   langgraph langgraph-checkpoint-sqlite aiosqlite \
   langchain langchain-core langchain-openai langchain-community \
-  langchain-mcp-adapters langchain-pinecone langchain-text-splitters \
+  langchain-pinecone langchain-text-splitters \
   fastmcp pinecone rank-bm25
 
 python seed_sandbox.py
 python -m mcp_server.servers.runbook_ingest
 ```
 
-### 2. Start MCP Servers & the Read-Only Gateway (`:8001`–`:8004`, `:8010`)
+### 2. Start All Services in One Command (`start_all.py`)
 
-`gateway_server.py` mounts `:8001`, `:8002`, and `:8003` over Streamable HTTP (no direct non-gateway mode is configured in `gateway_server.py`). Start all five MCP processes from separate terminals or background jobs:
+`start_all.py` checks ports/dependencies, launches `:8001`–`:8004`, waits for readiness, launches `:8010`, runs `uvicorn api.main:app` on `:8000` (waiting for `/health` HTTP `200`), and launches the React UI (`:5173`), handling `Ctrl+C` cleanup across all child processes:
+
+```bash
+python start_all.py
+# Backend only (skip Vite UI) with API hot-reload:
+python start_all.py --no-ui --reload
+```
+
+### Or Start Services Manually (Separate Terminals)
+
+`gateway_server.py` mounts `:8001`, `:8002`, and `:8003` over Streamable HTTP (no direct non-gateway mode is configured in `gateway_server.py`).
+
+1. Leaf MCP servers & Read-Only Gateway (`:8001`–`:8004`, `:8010`):
 
 ```bash
 python -m mcp_server.servers.telemetry_server    # :8001 (read-only SQLite)
@@ -170,13 +183,13 @@ python -m mcp_server.servers.remediation_server  # :8004 (write-gated audit log)
 python -m mcp_server.gateway.gateway_server      # :8010 (read-only proxy gateway)
 ```
 
-### 3. Start the FastAPI Control Plane (`:8000`)
+2. FastAPI Control Plane (`:8000`):
 
 ```bash
 uvicorn api.main:app --port 8000
 ```
 
-### 4. Start the Operator Console (`ui/`)
+3. Operator Console (`ui/`):
 
 ```bash
 cd ui
@@ -225,7 +238,7 @@ Once the bounded loop completes `investigate` and `synthesize`, execution pauses
 curl -s http://127.0.0.1:8000/incidents/inc-checkout-api-a1b2c3d4
 ```
 
-Response includes `status`, `awaiting_human_approval`, `degraded_sources`, `triage_report`, and `trace`:
+Response includes `status` (`investigating`, `awaiting_approval`, `executed`, `rejected`, or `failed`), `awaiting_human_approval`, `degraded_sources`, `triage_report`, `error`, and `trace`:
 
 ```json
 {
@@ -341,6 +354,7 @@ No automated offline benchmark runner is checked into `tests/` yet. Planned regr
 ├── .gitignore
 ├── README.md
 ├── seed_sandbox.py
+├── start_all.py                        # Unified launcher for MCP servers, Uvicorn API, and UI
 ├── agent/
 │   ├── graph.py                        # LangGraph state machine, step cap, timeout guard, HITL gate
 │   ├── llm.py                          # Env-driven ChatOpenAI / local OpenAI-compatible factory

@@ -1,65 +1,77 @@
+import json
 import os
-import sys
-import types
 from typing import Any
 
-# Compatibility bridge for langchain-mcp-adapters on mcp 2.x
-try:
-    import mcp.shared.context as _mcp_ctx
-    if not hasattr(_mcp_ctx, "RequestContext"):
-        _mcp_ctx.RequestContext = object
-    if "mcp.shared.session" not in sys.modules:
-        _sess_mod = types.ModuleType("mcp.shared.session")
-        _sess_mod.ProgressFnT = object
-        sys.modules["mcp.shared.session"] = _sess_mod
-
-    import fastmcp.tools
-
-    mcp_fastmcp = types.ModuleType("mcp.server.fastmcp")
-    mcp_fastmcp_tools = types.ModuleType("mcp.server.fastmcp.tools")
-    mcp_fastmcp_tools.Tool = fastmcp.tools.Tool
-    mcp_fastmcp_utils = types.ModuleType("mcp.server.fastmcp.utilities.func_metadata")
-    mcp_fastmcp_utils.ArgModelBase = type("ArgModelBase", (), {})
-    mcp_fastmcp_utils.FuncMetadata = type("FuncMetadata", (), {})
-
-    sys.modules["mcp.server.fastmcp"] = mcp_fastmcp
-    sys.modules["mcp.server.fastmcp.tools"] = mcp_fastmcp_tools
-    sys.modules["mcp.server.fastmcp.utilities"] = types.ModuleType("mcp.server.fastmcp.utilities")
-    sys.modules["mcp.server.fastmcp.utilities.func_metadata"] = mcp_fastmcp_utils
-except Exception:
-    pass
-
-from langchain.tools import BaseTool
-from langchain_mcp_adapters.client import MultiServerMCPClient
 from fastmcp import Client
+from langchain_core.tools import BaseTool, StructuredTool
 
 GATEWAY_MCP_URL = os.getenv("GATEWAY_MCP_URL", "http://127.0.0.1:8010/mcp")
 REMEDIATION_MCP_URL = os.getenv("REMEDIATION_MCP_URL", "http://127.0.0.1:8004/mcp")
 
-ALLOWED_WRITE_TOOLS = {"escalate_incident","trigger_rollback"}
+ALLOWED_WRITE_TOOLS = {"escalate_incident", "trigger_rollback"}
+
+
+def _format_call_result(result: Any) -> str:
+    """Extract clean text/JSON string from a FastMCP CallToolResult."""
+    structured = getattr(result, "structured_content", None)
+    if structured is not None:
+        return json.dumps(structured, default=str)
+
+    blocks = getattr(result, "content", None) or []
+    parts: list[str] = []
+    for block in blocks:
+        text = getattr(block, "text", None)
+        parts.append(text if text is not None else str(block))
+    if parts:
+        return "\n".join(parts)
+
+    data = getattr(result, "data", None)
+    if data is not None:
+        return json.dumps(data, default=str) if isinstance(data, (dict, list)) else str(data)
+    return str(result)
+
+
+def _to_langchain_tool(mcp_tool: Any) -> BaseTool:
+    """Wrap a read-only MCP tool definition as a LangChain StructuredTool via FastMCP Client."""
+    tool_name: str = mcp_tool.name
+    description: str = mcp_tool.description or f"Read-only MCP tool '{tool_name}'."
+    schema: dict[str, Any] = getattr(mcp_tool, "input_schema", None) or {
+        "type": "object",
+        "properties": {},
+    }
+
+    async def _invoke(**kwargs: Any) -> str:
+        async with Client(GATEWAY_MCP_URL) as client:
+            result = await client.call_tool(tool_name, kwargs, raise_on_error=False)
+        formatted = _format_call_result(result)
+        if getattr(result, "is_error", False):
+            return f"TOOL_ERROR ({tool_name}): {formatted}"
+        return formatted
+
+    return StructuredTool.from_function(
+        coroutine=_invoke,
+        name=tool_name,
+        description=description,
+        args_schema=schema,
+    )
 
 
 async def load_tools() -> list[BaseTool]:
-    client = MultiServerMCPClient(
-        {
-            "tracegate-readonly-gateway": {
-                "transport": "streamable_http",
-                "url": GATEWAY_MCP_URL,
-            }
-        }
-    )
-    tools = await client.get_tools()
+    """Load read-only tools from the Gateway (:8010) and reject any leaked write tools."""
+    async with Client(GATEWAY_MCP_URL) as client:
+        mcp_tools = await client.list_tools()
+
     leaked_tools = [
         tool.name
-        for tool in tools
+        for tool in mcp_tools
         if any(forbidden in tool.name for forbidden in ALLOWED_WRITE_TOOLS)
     ]
-
     if leaked_tools:
         raise RuntimeError(
             f"Security boundary violated: write tools exposed on read-only gateway: {leaked_tools}"
         )
-    return tools
+
+    return [_to_langchain_tool(tool) for tool in mcp_tools]
 
 
 load_readonly_tools = load_tools

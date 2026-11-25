@@ -77,10 +77,26 @@ async def _run_triage(incident_id: str, alert: IncidentAlert) -> None:
         "approved": None,
         "approved_by": None,
         "remediation_result": None,
+        "error": None,
         "status": "investigating",
     }
     try:
         await app.state.graph.ainvoke(initial_state, config=config)
+    except Exception as exc:
+        err_msg = f"{type(exc).__name__}: {exc}"
+        app.state.tracer.log_tool_call(
+            incident_id=incident_id,
+            node="triage",
+            tool_name="graph_error",
+            status="error",
+            latency_ms=0.0,
+            args={"incident_id": incident_id},
+            result_preview=err_msg,
+        )
+        await app.state.graph.aupdate_state(
+            config,
+            {"status": "failed", "error": err_msg},
+        )
     finally:
         app.state.in_flight.discard(incident_id)
 
@@ -125,9 +141,22 @@ async def get_incident(incident_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found.")
 
     state = snapshot.values
+    status = state.get("status")
+    error = state.get("error")
+
+    # Surface failures from previous crashed background tasks stored in checkpoint tasks
+    task_errors = [
+        str(getattr(t, "error"))
+        for t in getattr(snapshot, "tasks", ())
+        if getattr(t, "error", None)
+    ]
+    if task_errors and status in {"investigating", "synthesizing"} and incident_id not in app.state.in_flight:
+        status = "failed"
+        error = error or task_errors[0]
+
     return {
         "incident_id": incident_id,
-        "status": state.get("status"),
+        "status": status,
         "awaiting_human_approval": "approval_gate" in snapshot.next,
         "alert": state.get("alert"),
         "degraded_sources": state.get("degraded_sources", []),
@@ -135,6 +164,7 @@ async def get_incident(incident_id: str) -> dict[str, Any]:
         "approved": state.get("approved"),
         "approved_by": state.get("approved_by"),
         "remediation_result": state.get("remediation_result"),
+        "error": error,
         "trace": app.state.tracer.get_incident_trace(incident_id),
     }
 

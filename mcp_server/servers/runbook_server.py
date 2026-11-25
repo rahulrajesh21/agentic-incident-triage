@@ -1,10 +1,13 @@
 import asyncio
+import re
+from pathlib import Path
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 from langchain_community.retrievers.bm25 import BM25Retriever
 from langchain_pinecone import PineconeEmbeddings, PineconeVectorStore
 
-from mcp_server.servers.runbook_ingest import format_markdown
+from mcp_server.servers.runbook_ingest import RUNBOOK_DIR, format_markdown
 # from mcp_server.chaos import maybe_inject_chaos  # uncomment when ready
 
 load_dotenv()
@@ -66,6 +69,34 @@ async def search_runbooks(query: str, top_k: int = 4) -> dict:
     # await maybe_inject_chaos("runbook")
     results = await reciprocal_rank_fusion(query=query, top_k=min(max(top_k, 1), 8))
     return {"query": query, "count": len(results), "results": results}
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+async def list_runbooks() -> dict:
+    """List available runbook filenames with their active/deprecated status and updated date."""
+    items = []
+    for path in sorted(RUNBOOK_DIR.glob("*.md")):
+        raw = path.read_text(encoding="utf-8")
+        status_m = re.search(r"^status:\s*(.+)$", raw, re.MULTILINE)
+        updated_m = re.search(r"^updated:\s*(.+)$", raw, re.MULTILINE)
+        owner_m = re.search(r"^owner:\s*(.+)$", raw, re.MULTILINE)
+        items.append({
+            "doc_id": path.name,
+            "status": status_m.group(1).strip() if status_m else "unknown",
+            "updated_at": updated_m.group(1).strip() if updated_m else "unknown",
+            "owner": owner_m.group(1).strip() if owner_m else "unknown",
+        })
+    return {"count": len(items), "runbooks": items}
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+async def get_runbook(doc_id: str) -> dict:
+    """Read the complete markdown contents of a runbook file (e.g., 'postgres-pool-runbook.md')."""
+    clean_name = Path(doc_id.strip().split("#", 1)[0]).name
+    target = (RUNBOOK_DIR / clean_name).resolve()
+    if target.parent != RUNBOOK_DIR.resolve() or not target.is_file():
+        raise ToolError(f"Runbook not found: {doc_id}")
+    return {"doc_id": target.name, "content": target.read_text(encoding="utf-8")}
 
 
 if __name__ == "__main__":

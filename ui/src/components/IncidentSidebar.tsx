@@ -59,7 +59,7 @@ export const IncidentSidebar: React.FC<IncidentSidebarProps> = ({
       return inc?.status === "investigating" || inc?.status === "synthesizing";
     }
     if (tab === "closed") {
-      return inc?.status === "executed" || inc?.status === "rejected";
+      return inc?.status === "executed" || inc?.status === "rejected" || inc?.status === "failed";
     }
     return true;
   };
@@ -80,7 +80,7 @@ export const IncidentSidebar: React.FC<IncidentSidebarProps> = ({
     if (status === "executed") {
       return "bg-emerald-500";
     }
-    if (status === "rejected") {
+    if (status === "rejected" || status === "failed") {
       return "bg-red-500";
     }
     if (status === "investigating" || status === "synthesizing") {

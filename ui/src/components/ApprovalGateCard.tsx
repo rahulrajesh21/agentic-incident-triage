@@ -316,6 +316,18 @@ export const ApprovalGateCard: React.FC<ApprovalGateCardProps> = ({
     );
   }
 
+  if (incident.status === "failed") {
+    return (
+      <div className="rounded-md border border-zinc-800/90 bg-[#111113] px-4 py-3 flex items-center justify-between text-xs text-zinc-500">
+        <div className="flex items-center gap-2 font-mono">
+          <Lock className="w-3.5 h-3.5 text-zinc-500" />
+          <span>Write Gate (:8004) not reached — triage failed prior to approval</span>
+        </div>
+        <span className="font-mono text-[11px] text-red-400">Aborted</span>
+      </div>
+    );
+  }
+
   // Case 3: Investigation / Synthesis In Progress
   return (
     <div className="rounded-md border border-zinc-800/90 bg-[#111113] px-4 py-3 flex items-center justify-between text-xs text-zinc-400">
